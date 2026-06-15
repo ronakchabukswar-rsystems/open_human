@@ -8,6 +8,9 @@ This file orients contributors and coding agents. Authoritative narrative archit
 
 ## Repository layout
 
+**High-signal orientation — keep it lean**
+Only include facts an agent would likely guess wrong:
+
 | Path                    | Role                                                                                                                                                                                                        |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`app/`**              | pnpm workspace **`openhuman-app`** (v0.53.45): Vite + React (`app/src/`), Tauri desktop host (`app/src-tauri/`), Vitest tests                                                                              |
@@ -481,9 +484,9 @@ In the parent **OpenHuman** desktop app, **Tauri / Rust is a delivery vehicle**:
 
 ## Coding philosophy
 
-- **Unix-style modules**: Prefer **individual modules** with a **single, sharp responsibility**—each should do one thing really well. Compose behavior through small, well-named units and clear boundaries instead of monolithic code.
-- **Tests before the next layer**: Ship **enough unit tests and coverage** for the behavior you are adding or changing **before** building additional features on top of it. Treat untested code as incomplete; do not accumulate depth on a shaky base.
-- **Documentation with code**: New or changed behavior must ship with matching documentation. At minimum, add concise rustdoc / code comments where the flow is not obvious, and update `AGENTS.md`, architecture docs, or feature docs when repository rules or user-visible behavior change.
+- **Unix-style modules**: prefer small, sharply scoped modules — each should do one thing really well; compose behavior through small, well-named units and clear boundaries.
+- **Tests before merging**: ensure unit tests and coverage for changed behavior before building further features; treat untested code as incomplete.
+- **Documentation with code**: update `AGENTS.md`, architecture docs, or feature docs whenever repository rules or user-visible behavior change.
 
 ---
 
@@ -500,47 +503,63 @@ In the parent **OpenHuman** desktop app, **Tauri / Rust is a delivery vehicle**:
 
 ## Feature design workflow (new capabilities)
 
-Follow this order so behavior is **specified**, **proven in Rust**, **proven over RPC**, then **surfaced in the UI** with matching tests.
+Follow this sequence for new features — keeps logic layered and testable:
 
-1. **Specify against the current codebase** — Ground the design in **existing** domains, controller/registry patterns, and JSON-RPC naming (`openhuman.<namespace>_<function>`). Reuse or extend documented flows in [`gitbooks/developing/architecture.md`](gitbooks/developing/architecture.md) and sibling guides; avoid parallel architectures.
-2. **Implement in Rust** — Add domain logic under `src/openhuman/<domain>/`, wire **schemas + registered handlers** into the shared registry, and land **unit tests** in the crate (`cargo test -p openhuman`, focused modules) until the feature is correct in isolation.
-3. **JSON-RPC E2E** — Add or extend **integration-style tests** that call the real HTTP JSON-RPC surface (e.g. [`tests/json_rpc_e2e.rs`](tests/json_rpc_e2e.rs), mock backend / [`scripts/test-rust-with-mock.sh`](scripts/test-rust-with-mock.sh) as appropriate) so methods, params, and outcomes match what the UI will call.
-4. **UI in the Tauri app** — Build **React** screens, state, and **`core_rpc_relay` / `coreRpcClient`** usage in `app/`; keep **business rules** in the core, not duplicated in the shell.
-5. **App unit tests** — Cover components, hooks, and clients with **Vitest** (`pnpm test` / `pnpm test:unit` in `app/`).
-6. **App E2E** — Add **desktop E2E** specs where the feature is user-visible (`pnpm test:e2e*`, isolated workspace — see [Testing Guide (Unit + E2E)](#testing-guide-unit--e2e)) so the full stack (UI → Tauri → sidecar) behaves as intended.
+1. **Rust core** — implement in `src/openhuman/<domain>/`, wire schemas + handlers into `src/core/all.rs`, and unit test locally (`pnpm test:rust`).
+2. **Integration RPC** — validate method names/params via JSON-RPC tests (`tests/json_rpc_e2e.rs` or mock backend).
+3. **UI** — add screens/state/hooks in `app/` using `core_rpc_relay`.
+4. **Vitest** — cover new UI logic (`pnpm test` / `pnpm test:unit`).
+5. **E2E** — add desktop flows (`pnpm test:e2e*`, isolated workspace).
 
-**Capability catalog** — When a change adds, removes, renames, relocates, or materially changes a user-facing feature, update **`src/openhuman/about_app/`** in the same work so the runtime capability catalog remains the source of truth for what the app can do.
+**Capability catalog** — update `src/openhuman/about_app/` to reflect user-facing changes.
 
-**Debug logging (throughout)** — Add **lots of development-oriented logging** as you build, not as an afterthought. In **Rust**, use `log` / `tracing` at **`debug`** or **`trace`** on RPC entry and exit, error paths, state transitions, and any branch that is hard to infer from tests alone. In **`app/`**, follow existing patterns (e.g. the **`debug`** npm package with a **namespace** per area) plus **dev-only** detail where useful. Prefer **grep-friendly prefixes** (`[feature]`, domain name, or JSON-RPC method) so terminal output from **sidecar**, **Tauri**, and **WebView** can be correlated during `pnpm dev` / `tauri dev`. **Never** log secrets, raw JWTs, API keys, or full PII—redact or omit.
+**Debug logging** — add heavy debug/trace logs (Rust) and namespaced debug logs (`app/`) on new flows; never log secrets.
 
-**Planning rule:** When scoping a feature, define the **E2E scenarios (core RPC + app)** up front. Those scenarios should **cover the full intended scope**—happy paths, failure modes, auth or policy gates, and regressions you care about. If a scenario is not testable end-to-end, the spec is incomplete or the cut is too large; split or add harness support first.
+**Planning rule** — define complete E2E scenarios (happy paths + failure) before cutting scope.
 
 ---
 
 ## Key patterns (concise)
 
 - **Debug logging**: Ship **heavy `debug`/`trace` (Rust)** and **namespaced `debug` / dev logs (`app/`)** on new flows so sidecar + WebView output is easy to grep; see [Feature design workflow](#feature-design-workflow-new-capabilities). Never log secrets or raw tokens.
-- **`src/openhuman/`**: New features go in a **folder/module**, not new root-level `src/openhuman/*.rs` files (see Rust core section).
-- **File size**: Prefer ≤ ~500 lines per source file; split modules when growing.
-- **Pre-merge checks** (when touching code): Prettier, ESLint, `tsc --noEmit` in `app/`; `cargo fmt` + `cargo check` for changed Rust (`Cargo.toml` at root and/or `app/src-tauri/Cargo.toml` as appropriate).
-- **No dynamic imports** in production **`app/src`** code — use **static** `import` / `import type` at the top of the module. Do **not** use `import()` (async dynamic import), `React.lazy(() => import(...))`, or `await import('…')` to load app modules, Tauri APIs, or RPC clients. **Why:** predictable chunk graph, simpler static analysis, fewer surprises in Tauri + Vite, and easier code review. **If a module must not run at load time** (e.g. heavy optional path), use a static import and **guard the call site** with `try/catch` or an explicit runtime check instead of deferring module load via dynamic import. **Exceptions:** Vitest harness patterns (`vi.importActual`, dynamic imports **only** inside `*.test.ts` / `__tests__` / `test/setup.ts` when required by the runner); ambient `typeof import('…')` in `.d.ts`; config files (e.g. `tailwind.config.js` JSDoc).- **Type-only imports**: `import type` where appropriate.
-- **Dual socket / tool sync**: If you change realtime protocol, keep **frontend** (`socketService` / MCP transport) and **core** socket behavior aligned (see [`gitbooks/developing/architecture.md`](gitbooks/developing/architecture.md) dual-socket section).
+- **Rust core**: new features go in a **folder/module**, not new root-level `src/openhuman/*.rs` files.
+- **Pre-merge checks**: Prettier, ESLint, `tsc --noEmit` in `app/`; `cargo fmt` + `cargo check` for changed Rust.
+- **No dynamic imports** in production `app/src` code — use static `import` / `import type`; exceptions: Vitest harness, ambient types, config files.
+- **Dual socket / tool sync**: keep `socketService` / MCP transport (frontend) and core socket behavior aligned.
 
 ---
 
 ## Platform notes
 
-- **macOS deep links**: Often require a built **`.app`** bundle; not only `tauri dev`.
-- **`window.__TAURI__`**: Not assumed at module load; use `isTauri()` (from `app/src/services/webviewAccountService.ts`) or wrap `invoke(...)` in `try/catch`.
-- **Core is in-process**: `core_rpc` reaches `http://127.0.0.1:<port>/rpc` (default port `7788`) authenticated with `OPENHUMAN_CORE_TOKEN`. `scripts/stage-core-sidecar.mjs` no longer exists; `pnpm core:stage` is a no-op echo (sidecar removed in PR #1061). For standalone debugging: `./target/debug/openhuman-core serve` writes its token to `{workspace}/core.token` (default `~/.openhuman-staging/core.token` under `OPENHUMAN_APP_ENV=staging`); public endpoints `GET /health`, `GET /schema`, `GET /events` need no auth.
+- **macOS deep links**: often require a built `.app` bundle, not only `tauri dev`.
+- **`window.__TAURI__`**: not assumed at module load; use `isTauri()` or wrap `invoke(...)` in `try/catch`.
+- **Core is in-process**: `core_rpc` reaches `http://127.0.0.1:<port>/rpc` (default port 7788) with `OPENHUMAN_CORE_TOKEN` authentication; for standalone debugging run `./target/debug/openhuman-core serve`, token in `~/.openhuman-staging/core.token`; public endpoints `/health`, `/schema`, `/events`.
 
 ---
 
 _Last aligned with monorepo layout (`app/` + root `src/`), in-process core (no sidecar), QuickJS removed, skills catalog on GitHub (`tinyhumansai/openhuman-skills`), and Tauri shell IPC as of `openhuman-app` v0.53.45 / repo `main`._
 
 ---
+## Git workflow
+
+- Never work directly on `main`; branch off upstream `main`.
+- PRs target `tinyhumansai/openhuman` `main`.
+- Pre-push hook runs `pnpm rust:check`; `--no-verify` only for unrelated breakage.
+
+---
 
 ## Cursor Cloud specific instructions
+
+### Environment overview
+
+Two services run independently for development:
+
+| Service | Start command | Port | Notes |
+|---------|--------------|------|-------|
+| **Vite dev server** | `pnpm dev` | 1420 | React frontend with HMR |
+| **Core JSON-RPC server** | `./target/debug/openhuman-core serve` | 7788 | Rust core, writes bearer token to `~/.openhuman-staging/core.token` |
+
+App connects to a remote staging backend — no local backend.
 
 ### Environment overview
 
@@ -606,10 +625,10 @@ Key requirements:
 
 ### Gotchas
 
-- `pnpm install` may warn about ignored build scripts (`@sentry/cli`, `esbuild`, etc.). The esbuild binary is correctly installed via its native platform package despite the warning — Vite and Vitest work fine.
-- Git submodules (`app/src-tauri/vendor/tauri-cef`, `app/src-tauri/vendor/tauri-plugin-notification`) must be initialized for Tauri shell compilation. Run `git submodule update --init --recursive` if not already done.
-- `pnpm test:unit` does not exist at the root level; use `pnpm test` instead (which delegates to `vitest run` in the `app` workspace).
-- The Tauri shell `cargo check` requires GTK/desktop system libraries; without them, the pre-push hook's `pnpm rust:check` will fail. Use `--no-verify` on push if GTK libs are missing and the change is unrelated to the Tauri shell.
+- `pnpm install` may warn about ignored build scripts; safe to ignore.
+- Git submodules (`app/src-tauri/vendor/tauri-cef`, `app/src-tauri/vendor/tauri-plugin-notification`) must be initialized.
+- `pnpm test:unit` does not exist at root; use `pnpm test`.
+- `pnpm rust:check` requires GTK libs; use `--no-verify` only for unrelated breakage.
 
 
 <claude-mem-context>
