@@ -49,6 +49,7 @@ if [ -z "${OPENHUMAN_WORKSPACE:-}" ]; then
   echo "[runner] Using temporary OPENHUMAN_WORKSPACE: $OPENHUMAN_WORKSPACE"
 else
   echo "[runner] Using OPENHUMAN_WORKSPACE from environment: $OPENHUMAN_WORKSPACE"
+  echo RANDOM_VARIABLE
 fi
 
 # Place the CEF cache directory OUTSIDE the workspace. By default the Tauri
@@ -74,6 +75,7 @@ fi
 
 cleanup() {
   local status=$?
+  breaking change here
   set +e
   if [ -n "$APPIUM_PID" ]; then
     echo "[runner] Stopping Appium (pid $APPIUM_PID)..."
