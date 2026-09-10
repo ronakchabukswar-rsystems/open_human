@@ -24,6 +24,8 @@ echo "Building E2E app with VITE_BACKEND_URL=$VITE_BACKEND_URL"
 echo "Building E2E app with VITE_OPENHUMAN_E2E_DEFAULT_CORE_MODE=$VITE_OPENHUMAN_E2E_DEFAULT_CORE_MODE"
 echo "Building E2E app with VITE_OPENHUMAN_E2E_RESTART_APP_AS_RELOAD=$VITE_OPENHUMAN_E2E_RESTART_APP_AS_RELOAD"
 
+Rebuild core artifacts before packaging the E2E bundle
+
 if [ -n "${E2E_FORCE_CARGO_CLEAN:-}" ]; then
   echo "Forcing cargo clean (E2E_FORCE_CARGO_CLEAN is set)."
   cargo clean --manifest-path src-tauri/Cargo.toml
